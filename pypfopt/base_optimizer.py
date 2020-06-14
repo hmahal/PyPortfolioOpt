@@ -6,8 +6,9 @@ optimisation.
 Additionally, we define a general utility function ``portfolio_performance`` to
 evaluate return and risk for a given set of portfolio weights.
 """
-
+import collections
 import json
+import warnings
 import numpy as np
 import pandas as pd
 import cvxpy as cp
@@ -47,14 +48,25 @@ class BaseOptimizer:
         # Outputs
         self.weights = None
 
-    def set_weights(self, weights):
+    def _make_output_weights(self, weights=None):
         """
-        Utility function to set weights.
+        Utility function to make output weight dict from weight attribute (np.array). If no
+        arguments passed, use self.tickers and self.weights. If one argument is passed, assume
+        it is an alternative weight array so use self.tickers and the argument.
+        """
+        if weights is None:
+            weights = self.weights
 
-        :param weights: {ticker: weight} dictionary
-        :type weights: dict
+        return collections.OrderedDict(zip(self.tickers, weights))
+
+    def set_weights(self, input_weights):
         """
-        self.weights = np.array([weights[ticker] for ticker in self.tickers])
+        Utility function to set weights attribute (np.array) from user input
+
+        :param input_weights: {ticker: weight} dict
+        :type input_weights: dict
+        """
+        self.weights = np.array([input_weights[ticker] for ticker in self.tickers])
 
     def clean_weights(self, cutoff=1e-4, rounding=5):
         """
@@ -67,7 +79,7 @@ class BaseOptimizer:
                          Set to None if rounding is not desired.
         :type rounding: int, optional
         :return: asset weights
-        :rtype: dict
+        :rtype: OrderedDict
         """
         if self.weights is None:
             raise AttributeError("Weights not yet computed")
@@ -77,7 +89,8 @@ class BaseOptimizer:
             if not isinstance(rounding, int) or rounding < 1:
                 raise ValueError("rounding must be a positive integer")
             clean_weights = np.round(clean_weights, rounding)
-        return dict(zip(self.tickers, clean_weights))
+
+        return self._make_output_weights(clean_weights)
 
     def save_weights_to_file(self, filename="weights.csv"):
         """
@@ -94,9 +107,11 @@ class BaseOptimizer:
         elif ext == "json":
             with open(filename, "w") as fp:
                 json.dump(clean_weights, fp)
-        else:
+        elif ext == "txt":
             with open(filename, "w") as f:
-                f.write(str(clean_weights))
+                f.write(str(dict(clean_weights)))
+        else:
+            raise NotImplementedError("Only supports .txt .json .csv")
 
 
 class BaseConvexOptimizer(BaseOptimizer):
@@ -112,6 +127,7 @@ class BaseConvexOptimizer(BaseOptimizer):
     - ``n_assets`` - int
     - ``tickers`` - str list
     - ``weights`` - np.ndarray
+    - ``solver`` - str
 
     Public methods:
 
@@ -138,11 +154,12 @@ class BaseConvexOptimizer(BaseOptimizer):
         self._w = cp.Variable(n_assets)
         self._objective = None
         self._additional_objectives = []
-        self._additional_constraints_raw = []
         self._constraints = []
         self._lower_bounds = None
         self._upper_bounds = None
         self._map_bounds_to_constraints(weight_bounds)
+
+        self.solver = None
 
     def _map_bounds_to_constraints(self, test_bounds):
         """
@@ -193,12 +210,17 @@ class BaseConvexOptimizer(BaseOptimizer):
         """
         try:
             opt = cp.Problem(cp.Minimize(self._objective), self._constraints)
-            opt.solve()
+
+            if self.solver is not None:
+                opt.solve(solver=self.solver, verbose=True)
+            else:
+                opt.solve()
         except (TypeError, cp.DCPError):
             raise exceptions.OptimizationError
         if opt.status != "optimal":
             raise exceptions.OptimizationError
         self.weights = self._w.value.round(16) + 0.0  # +0.0 removes signed zero
+        return self._make_output_weights()
 
     def add_objective(self, new_objective, **kwargs):
         """
@@ -233,11 +255,46 @@ class BaseConvexOptimizer(BaseOptimizer):
         """
         if not callable(new_constraint):
             raise TypeError("New constraint must be provided as a lambda function")
-
-        # Save raw constraint (needed for e.g max_sharpe)
-        self._additional_constraints_raw.append(new_constraint)
-        # Add constraint
         self._constraints.append(new_constraint(self._w))
+
+    def add_sector_constraints(self, sector_mapper, sector_lower, sector_upper):
+        """
+        Adds constraints on the sum of weights of different groups of assets.
+        Most commonly, these will be sector constraints e.g portfolio's exposure to
+        tech must be less than x%::
+
+            sector_mapper = {
+                "GOOG": "tech",
+                "FB": "tech",,
+                "XOM": "Oil/Gas",
+                "RRC": "Oil/Gas",
+                "MA": "Financials",
+                "JPM": "Financials",
+            }
+
+            sector_lower = {"tech": 0.1}  # at least 10% to tech
+            sector_upper = {
+                "tech": 0.4, # less than 40% tech
+                "Oil/Gas: 0.1 # less than 10% oil and gas
+            }
+
+        :param sector_mapper: dict that maps tickers to sectors
+        :type sector_mapper: {str: str} dict
+        :param sector_lower: lower bounds for each sector
+        :type sector_lower: {str: float} dict
+        :param sector_upper: upper bounds for each sector
+        :type sector_upper: {str:float} dict
+        """
+        if np.any(self._lower_bounds < 0):
+            warnings.warn(
+                "Sector constraints may not produce reasonable results if shorts are allowed."
+            )
+        for sector in sector_upper:
+            is_sector = [sector_mapper[t] == sector for t in self.tickers]
+            self._constraints.append(cp.sum(self._w[is_sector]) <= sector_upper[sector])
+        for sector in sector_lower:
+            is_sector = [sector_mapper[t] == sector for t in self.tickers]
+            self._constraints.append(cp.sum(self._w[is_sector]) >= sector_lower[sector])
 
     def convex_objective(self, custom_objective, weights_sum_to_one=True, **kwargs):
         """
@@ -252,13 +309,13 @@ class BaseConvexOptimizer(BaseOptimizer):
             w = ef.convex_objective(logarithmic_barrier, cov_matrix=ef.cov_matrix)
 
         :param custom_objective: an objective function to be MINIMISED. This should be written using
-                                 cvxpy atoms Should map (w, **kwargs) -> float.
-        :type custom_objective: function with signature (cp.Variable, **kwargs) -> cp.Expression
+                                 cvxpy atoms Should map (w, `**kwargs`) -> float.
+        :type custom_objective: function with signature (cp.Variable, `**kwargs`) -> cp.Expression
         :param weights_sum_to_one: whether to add the default objective, defaults to True
         :type weights_sum_to_one: bool, optional
         :raises OptimizationError: if the objective is nonconvex or constraints nonlinear.
         :return: asset weights for the efficient risk portfolio
-        :rtype: dict
+        :rtype: OrderedDict
         """
         # custom_objective must have the right signature (w, **kwargs)
         self._objective = custom_objective(self._w, **kwargs)
@@ -269,8 +326,7 @@ class BaseConvexOptimizer(BaseOptimizer):
         if weights_sum_to_one:
             self._constraints.append(cp.sum(self._w) == 1)
 
-        self._solve_cvxpy_opt_problem()
-        return dict(zip(self.tickers, self.weights))
+        return self._solve_cvxpy_opt_problem()
 
     def nonconvex_objective(
         self,
@@ -313,7 +369,7 @@ class BaseConvexOptimizer(BaseOptimizer):
                        User beware: different optimisers require different inputs.
         :type solver: string
         :return: asset weights that optimise the custom objective
-        :rtype: dict
+        :rtype: OrderedDict
         """
         # Sanitise inputs
         if not isinstance(objective_args, tuple):
@@ -341,7 +397,7 @@ class BaseConvexOptimizer(BaseOptimizer):
             constraints=final_constraints,
         )
         self.weights = result["x"]
-        return dict(zip(self.tickers, self.weights))
+        return self._make_output_weights()
 
 
 def portfolio_performance(
@@ -351,8 +407,8 @@ def portfolio_performance(
     After optimising, calculate (and optionally print) the performance of the optimal
     portfolio. Currently calculates expected return, volatility, and the Sharpe ratio.
 
-    :param expected_returns: expected returns for each asset. Set to None if
-                             optimising for volatility only.
+    :param expected_returns: expected returns for each asset. Can be None if
+                             optimising for volatility only (but not recommended).
     :type expected_returns: np.ndarray or pd.Series
     :param cov_matrix: covariance of returns for each asset
     :type cov_matrix: np.array or pd.DataFrame
@@ -374,6 +430,7 @@ def portfolio_performance(
         else:
             tickers = list(range(len(expected_returns)))
         new_weights = np.zeros(len(tickers))
+
         for i, k in enumerate(tickers):
             if k in weights:
                 new_weights[i] = weights[k]
@@ -385,25 +442,25 @@ def portfolio_performance(
         raise ValueError("Weights is None")
 
     sigma = np.sqrt(objective_functions.portfolio_variance(new_weights, cov_matrix))
-    mu = objective_functions.portfolio_return(
-        new_weights, expected_returns, negative=False
-    )
-    # new_weights.dot(expected_returns)
 
-    # sharpe = -objective_functions.negative_sharpe(
-    #     new_weights, expected_returns, cov_matrix, risk_free_rate=risk_free_rate
-    # )
+    if expected_returns is not None:
+        mu = objective_functions.portfolio_return(
+            new_weights, expected_returns, negative=False
+        )
 
-    sharpe = objective_functions.sharpe_ratio(
-        new_weights,
-        expected_returns,
-        cov_matrix,
-        risk_free_rate=risk_free_rate,
-        negative=False,
-    )
-
-    if verbose:
-        print("Expected annual return: {:.1f}%".format(100 * mu))
-        print("Annual volatility: {:.1f}%".format(100 * sigma))
-        print("Sharpe Ratio: {:.2f}".format(sharpe))
-    return mu, sigma, sharpe
+        sharpe = objective_functions.sharpe_ratio(
+            new_weights,
+            expected_returns,
+            cov_matrix,
+            risk_free_rate=risk_free_rate,
+            negative=False,
+        )
+        if verbose:
+            print("Expected annual return: {:.1f}%".format(100 * mu))
+            print("Annual volatility: {:.1f}%".format(100 * sigma))
+            print("Sharpe Ratio: {:.2f}".format(sharpe))
+        return mu, sigma, sharpe
+    else:
+        if verbose:
+            print("Annual volatility: {:.1f}%".format(100 * sigma))
+        return None, sigma, None

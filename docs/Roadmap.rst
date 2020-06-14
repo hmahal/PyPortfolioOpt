@@ -20,6 +20,57 @@ have any other feature requests, please raise them using GitHub
   `Zipline <https://github.com/quantopian/zipline>`_.
 - Further support for different risk/return models
 
+1.2.0
+=====
+
+- Added Idzorek's method for calculating the ``omega`` matrix given percentage confidences.
+- Fixed max sharpe to allow for custom constraints
+- Grouped sector constraints
+- Improved error tracebacks
+- Adding new cookbook for examples (in progress).
+- Packaging: added bettter instructions for windows, added docker support.
+
+
+1.2.1
+-----
+
+Fixed critical ordering bug in sector constraints
+
+1.2.2
+-----
+
+Matplotlib now required dependency; support for pandas 1.0. 
+
+1.2.3
+-----
+
+- Added support for changing solvers and verbose output
+- Changed dict to OrderedDict to support python 3.5
+- Improved packaging/dependencies: simplified requirements.txt, improved processes before pushing.
+
+1.1.0
+=====
+
+- Multiple additions and improvements to ``risk_models``:
+    
+  - Introduced a new API, in which the function ``risk_models.risk_matrix(method="...")`` allows
+    all the different risk models to be called. This should make testing easier.
+  - All methods now accept returns data instead of prices, if you set the flag ``returns_data=True``.
+- Automatically fix non-positive semidefinite covariance matrices!
+
+- Additions and improvements to ``expected_returns``:
+
+  - Introduced a new API, in which the function ``expected_returns.return_model(method="...")`` allows
+    all the different return models to be called. This should make testing easier.
+  - Added option to 'properly' compound returns.
+  - Added the James-Stein shrinkage estimator
+  - Added the CAPM return model.
+
+- ``from pypfopt import plotting``: moved all plotting functionality into a new class and added
+  new plots. All other plotting functions (scattered in different classes) have been retained,
+  but are now deprecated.
+
+
 1.0.0
 =====
 
@@ -44,6 +95,12 @@ have any other feature requests, please raise them using GitHub
 -----
 
 Fixed minor issues in CLA: weight bound bug, ``efficient_frontier`` needed weights to be called, ``set_weights`` not needed.
+
+1.0.2
+-----
+
+Fixed small but important bug where passing ``expected_returns=None`` fails. According to the docs, users
+should be able to only pass covariance if they want to only optimise min volatility.
 
 
 0.5.0
@@ -164,7 +221,7 @@ Refactored shrinkage models, including single factor and constant correlation.
 -----
 
 - Included python 3.7 in travis build
-- Merged PR from `schneiderfelipe <https://github.com/schneiderfelipe>`_ to fix error message.
+- Merged PR from `schneiderfelipe <https://github.com/schneiderfelipe>`_ to fix an error message.
 
 
 0.1.0

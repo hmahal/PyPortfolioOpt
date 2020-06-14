@@ -5,6 +5,7 @@ by Marcos Lopez de Prado and David Bailey.
 """
 
 import math
+import warnings
 import numpy as np
 import pandas as pd
 from . import base_optimizer
@@ -42,7 +43,6 @@ class CLA(base_optimizer.BaseOptimizer):
     - ``max_sharpe()`` optimises for maximal Sharpe ratio (a.k.a the tangency portfolio)
     - ``min_volatility()`` optimises for minimum volatility
     - ``efficient_frontier()`` computes the entire efficient frontier
-    - ``plot_efficient_frontier()`` to plot the efficient frontier.
     - ``portfolio_performance()`` calculates the expected return, volatility and Sharpe ratio for
       the optimised portfolio.
     - ``clean_weights()`` rounds the weights and clips near-zeros.
@@ -373,10 +373,10 @@ class CLA(base_optimizer.BaseOptimizer):
 
     def max_sharpe(self):
         """
-        Maximise the sharpe ratio.
+        Maximise the Sharpe ratio.
 
         :return: asset weights for the volatility-minimising portfolio
-        :rtype: dict
+        :rtype: OrderedDict
         """
         if not self.w:
             self._solve()
@@ -391,14 +391,14 @@ class CLA(base_optimizer.BaseOptimizer):
             sr.append(b)
 
         self.weights = w_sr[sr.index(max(sr))].reshape((self.n_assets,))
-        return dict(zip(self.tickers, self.weights))
+        return self._make_output_weights()
 
     def min_volatility(self):
         """
         Minimise volatility.
 
         :return: asset weights for the volatility-minimising portfolio
-        :rtype: dict
+        :rtype: OrderedDict
         """
         if not self.w:
             self._solve()
@@ -408,7 +408,7 @@ class CLA(base_optimizer.BaseOptimizer):
             var.append(a)
         # return min(var)**.5, self.w[var.index(min(var))]
         self.weights = self.w[var.index(min(var))].reshape((self.n_assets,))
-        return dict(zip(self.tickers, self.weights))
+        return self._make_output_weights()
 
     def efficient_frontier(self, points=100):
         """
@@ -441,62 +441,6 @@ class CLA(base_optimizer.BaseOptimizer):
         self.frontier_values = (mu, sigma, weights)
         return mu, sigma, weights
 
-    def plot_efficient_frontier(
-        self, points=100, show_assets=True, filename=None, showfig=True
-    ):
-        """
-        Plot the efficient frontier
-
-        :param points: number of points to plot, defaults to 100
-        :type points: int, optional
-        :param show_assets: whether we should plot the asset risks/returns also, defaults to True
-        :type show_assets: bool, optional
-        :param filename: name of the file to save to, defaults to None (doesn't save)
-        :type filename: str, optional
-        :param showfig: whether to plt.show() the figure, defaults to True
-        :type showfig: bool, optional
-        :raises ImportError: if matplotlib is not installed
-        :return: matplotlib axis
-        :rtype: matplotlib.axes object
-        """
-        try:
-            import matplotlib.pyplot as plt
-        except (ModuleNotFoundError, ImportError):
-            raise ImportError("Please install matplotlib via pip or poetry")
-
-        optimal_ret, optimal_risk, _ = self.portfolio_performance()
-
-        if self.frontier_values is None:
-            self.efficient_frontier(points=points)
-
-        mus, sigmas, _ = self.frontier_values
-
-        fig, ax = plt.subplots()
-        ax.plot(sigmas, mus, label="Efficient frontier")
-
-        if show_assets:
-            ax.scatter(
-                np.sqrt(np.diag(self.cov_matrix)),
-                self.expected_returns,
-                s=30,
-                color="k",
-                label="assets",
-            )
-
-        ax.scatter(
-            optimal_risk, optimal_ret, marker="x", s=100, color="r", label="optimal"
-        )
-        ax.legend()
-        ax.set_xlabel("Volatility")
-        ax.set_ylabel("Return")
-
-        if filename:
-            plt.savefig(fname=filename, dpi=300)
-
-        if showfig:
-            plt.show()
-        return ax
-
     def set_weights(self, _):
         # Overrides parent method since set_weights does nothing.
         raise NotImplementedError("set_weights does nothing for CLA")
@@ -510,7 +454,7 @@ class CLA(base_optimizer.BaseOptimizer):
         :type verbose: bool, optional
         :param risk_free_rate: risk-free rate of borrowing/lending, defaults to 0.02
         :type risk_free_rate: float, optional
-        :raises ValueError: if weights have not been calcualted yet
+        :raises ValueError: if weights have not been calculated yet
         :return: expected return, volatility, Sharpe ratio.
         :rtype: (float, float, float)
         """

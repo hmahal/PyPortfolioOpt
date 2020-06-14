@@ -15,13 +15,14 @@ covariance).
 .. image:: ../media/corrplot.png
    :align: center
    :width: 60%
+   :alt: plot of the covariance matrix
 
 
 In many ways, the subject of risk models is far more important than that of
 expected returns because historical variance is generally a much more predictive
 statistic than mean historical returns. In fact, research by Kritzman et
 al. (2010) [1]_ suggests that minimum variance portfolios, formed by optimising
-wthout providing expected returns, actually perform much better out of sample.
+without providing expected returns, actually perform much better out of sample.
 
 The problem, however, is that in practice we do not have access to the covariance
 matrix (in the same way that we don't have access to expected returns) – the only
@@ -38,16 +39,22 @@ covariance.
     Estimation of the covariance matrix is a very deep and actively-researched
     topic that involves statistics, econometrics, and numerical/computational
     approaches. I have made an effort to familiarise myself with the seminal papers in the field
-    and implement a few basic options, but there are many more advanced models that could be used.
+    and implement a few basic options, but there is a lot of room for more sophistication.
 
 
 .. automodule:: pypfopt.risk_models
 
     .. note::
 
-        If you only have returns (no prices), fear not. The ``expected_returns`` module contains
-        a helper function called ``prices_from_returns`` that computes 'pseudoprices' which
-        work with these methods.
+        For any of these methods, if you would prefer to pass returns (the default is prices),
+        set the boolean flag ``returns_data=True``
+
+    .. autofunction:: risk_matrix
+
+    .. autofunction:: fix_nonpositive_semidefinite
+
+        Not all the calculated covariance matrices will be positive semidefinite (PSD). This method
+        checks if a matrix is PSD and fixes it if not.
 
     .. autofunction:: sample_cov
 
@@ -72,7 +79,7 @@ covariance.
         possible ways of defining a semicovariance matrix, the main differences lying in
         the 'pairwise' nature, i.e whether we should sum over :math:`\min(r_i,B)\min(r_j,B)`
         or :math:`\min(r_ir_j, B)`. In this implementation, we have followed the advice of
-        Estrada 2007 [2]_, preferring:
+        Estrada (2007) [2]_, preferring:
 
         .. math::
             \frac{1}{n}\sum_{i = 1}^n {\sum_{j = 1}^n {\min \left( {{r_i},B} \right)} }
@@ -92,21 +99,11 @@ covariance.
         The minimum covariance determinant (MCD) estimator is designed to be robust to
         outliers and 'contaminated' data [3]_. An efficient estimator is implemented in the
         :py:mod:`sklearn.covariance` module, which is based on the algorithm presented in
-        Rousseeuw 1999 [4]_.
-
-        .. caution::
-
-            Some of my tests have shown that ``min_cov_determinant`` does not always
-            result in positive definite matrices. Please use ``risk_models._is_positive_semidefinite()``
-            to check your covariance matrix before optimising portfolios.
+        Rousseeuw (1999) [4]_.
 
     .. autofunction:: cov_to_corr
 
-
-    .. autofunction:: correlation_plot
-
-        An example of a correlation plot is shown at the top of the page.
-
+    .. autofunction:: corr_to_cov
 
 
 
@@ -130,7 +127,7 @@ combined with a structured estimator :math:`F`, using the below formula (where
 It is called shrinkage because it can be thought of as "shrinking" the sample
 covariance matrix towards the other estimator, which is accordingly called the
 **shrinkage target**. The shrinkage target may be significantly biased but has little
-esimation error. There are many possible options for the target, and each one will
+estimation error. There are many possible options for the target, and each one will
 result in a different optimal shrinkage constant :math:`\delta`. PyPortfolioOpt offers
 the following shrinkage methods:
 
@@ -155,7 +152,7 @@ the following shrinkage methods:
     finance.
 
 
-My implementations have been translated the Matlab code on
+My implementations have been translated from the Matlab code on
 `Michael Wolf's webpage <https://www.econ.uzh.ch/en/people/faculty/wolf/publications.html>`_, with
 the help of `xtuanta <https://github.com/robertmartin8/PyPortfolioOpt/issues/20>`_. 
 

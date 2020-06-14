@@ -6,8 +6,8 @@ Expected Returns
 
 Mean-variance optimisation requires knowledge of the expected returns. In practice,
 these are rather difficult to know with any certainty. Thus the best we can do is to
-come up with estimates, for example by extrapolating historical data, This is where the
-main flaw in efficient frontier lies – the optimisation procedure is sound, and provides
+come up with estimates, for example by extrapolating historical data, This is the
+main flaw in mean-variance optimisation – the optimisation procedure is sound, and provides
 strong mathematical guarantees, *given the correct inputs*. This is one of the reasons
 why I have emphasised modularity: users should be able to come up with their own
 superior models and feed them into the optimiser.
@@ -20,9 +20,14 @@ superior models and feed them into the optimiser.
     on choosing an appropriate risk model (see :ref:`risk-models`). 
 
     As of v0.5.0, you can use :ref:`black-litterman` to greatly improve the quality of
-    your expected returns estimate.
+    your estimate of the expected returns.
 
 .. automodule:: pypfopt.expected_returns
+
+    .. note::
+
+        For any of these methods, if you would prefer to pass returns (the default is prices),
+        set the boolean flag ``returns_data=True``
 
     .. autofunction:: mean_historical_return
 
@@ -41,6 +46,30 @@ superior models and feed them into the optimiser.
         the mean historical return. However, if you plan on rebalancing much more frequently,
         there is a case to be made for lowering the span in order to capture recent trends.
 
+    .. autofunction:: james_stein_shrinkage
+
+        A surprising result in statistics is that the MLE estimator for a 3+ dimensional
+        Normal distribution is an *inadmissible* estimator. That is, there exists an estimator
+        :math:`\hat{\mu}^{JS}` such that:
+
+        .. math::
+
+            E\{ \lVert \hat{\mu}^{JS} - \mu \rVert^2 \} < E \{ \lVert \bar{\mu} - \mu \rVert^2 \}
+
+        In essence, to reduce account for the fact that our sample may not be representative and
+        thus reduce loss, we shrink the sample means to the "grand average" (mean of means). For
+        a more detailed explanation, refer to Efron and Hastie (2010) [1]_
+
+    .. autofunction:: capm_return
+
     .. autofunction:: returns_from_prices
 
+    .. autofunction:: log_returns_from_prices
+
     .. autofunction:: prices_from_returns
+
+
+References
+==========
+
+.. [1] Efron and Hastie (2010) `Empirical Bayes and the James–Stein Estimator <http://statweb.stanford.edu/~ckirby/brad/LSI/chapter1.pdf>`_.

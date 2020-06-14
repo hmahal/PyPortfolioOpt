@@ -32,19 +32,22 @@ linked paper, here is a rough overview of how HRP works:
 4. Iterate over each level, optimally combining the mini-portfolios at each node.
 
 
-The advantages of this are that it does not require inversion of the covariance
+The advantages of this are that it does not require the inversion of the covariance
 matrix as with traditional quadratic optimisers, and seems to produce diverse
 portfolios that perform well out of sample.
 
 .. image:: ../media/dendrogram.png
    :width: 80%
    :align: center
+   :alt: cluster diagram
 
 
 .. automodule:: pypfopt.hierarchical_portfolio
 
     .. autoclass:: HRPOpt
         :members:
+        :exclude-members: plot_dendrogram
+
 
         .. automethod:: __init__
 
@@ -61,6 +64,7 @@ number of iterations, and can efficiently derive the entire efficient frontier.
 .. image:: ../media/cla_plot.png
    :width: 80%
    :align: center
+   :alt: the Efficient Frontier
 
 .. tip:: 
 
@@ -76,6 +80,7 @@ the same API, though as of v0.5.0 we only support ``max_sharpe()`` and ``min_vol
 
     .. autoclass:: CLA
         :members:
+        :exclude-members: plot_efficient_frontier
 
         .. automethod:: __init__
 

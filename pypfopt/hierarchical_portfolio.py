@@ -12,12 +12,14 @@ Currently implemented:
   permission from Marcos Lopez de Prado (2016).
 """
 
+import collections
+import warnings
 import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy as sch
 import scipy.spatial.distance as ssd
 
-from . import base_optimizer
+from . import base_optimizer, risk_models
 
 
 class HRPOpt(base_optimizer.BaseOptimizer):
@@ -41,7 +43,6 @@ class HRPOpt(base_optimizer.BaseOptimizer):
     Public methods:
 
     - ``optimize()`` calculates weights using HRP
-    - ``plot_dendrogram()`` plots the clusters
     - ``portfolio_performance()`` calculates the expected return, volatility and Sharpe ratio for
       the optimised portfolio.
     - ``set_weights()`` creates self.weights (np.ndarray) from a weights dict
@@ -49,18 +50,28 @@ class HRPOpt(base_optimizer.BaseOptimizer):
     - ``save_weights_to_file()`` saves the weights to csv, json, or txt.
     """
 
-    def __init__(self, returns):
+    def __init__(self, returns=None, cov_matrix=None):
         """
         :param returns: asset historical returns
         :type returns: pd.DataFrame
+        :param cov_matrix: covariance of asset returns
+        :type cov_matrix: pd.DataFrame.
         :raises TypeError: if ``returns`` is not a dataframe
         """
-        if not isinstance(returns, pd.DataFrame):
+        if returns is None and cov_matrix is None:
+            raise ValueError("Either returns or cov_matrix must be provided")
+
+        if returns is not None and not isinstance(returns, pd.DataFrame):
             raise TypeError("returns are not a dataframe")
 
         self.returns = returns
+        self.cov_matrix = cov_matrix
         self.clusters = None
-        tickers = list(returns.columns)
+
+        if returns is None:
+            tickers = list(cov_matrix.columns)
+        else:
+            tickers = list(returns.columns)
         super().__init__(len(tickers), tickers)
 
     @staticmethod
@@ -79,9 +90,7 @@ class HRPOpt(base_optimizer.BaseOptimizer):
         cov_slice = cov.loc[cluster_items, cluster_items]
         weights = 1 / np.diag(cov_slice)  # Inverse variance weights
         weights /= weights.sum()
-        w = weights.reshape(-1, 1)
-        cluster_var = np.dot(np.dot(w.T, cov_slice), w)[0, 0]
-        return cluster_var
+        return np.linalg.multi_dot((weights, cov_slice, weights))
 
     @staticmethod
     def _get_quasi_diag(link):
@@ -90,28 +99,16 @@ class HRPOpt(base_optimizer.BaseOptimizer):
 
         :param link: linkage matrix after clustering
         :type link: np.ndarray
-        :return: sorted list of tickers
+        :return: sorted list of indices
         :rtype: list
         """
-        link = link.astype(int)
-        sort_ix = pd.Series([link[-1, 0], link[-1, 1]])
-        num_items = link[-1, -1]  # number of original items
-        while sort_ix.max() >= num_items:
-            sort_ix.index = range(0, sort_ix.shape[0] * 2, 2)  # make space
-            df0 = sort_ix[sort_ix >= num_items]  # find clusters
-            i = df0.index
-            j = df0.values - num_items
-            sort_ix[i] = link[j, 0]  # item 1
-            df0 = pd.Series(link[j, 1], index=i + 1)
-            sort_ix = sort_ix.append(df0)  # item 2
-            sort_ix = sort_ix.sort_index()  # re-sort
-            sort_ix.index = range(sort_ix.shape[0])  # re-index
-        return sort_ix.tolist()
+        return sch.to_tree(link, rd=False).pre_order()
 
     @staticmethod
     def _raw_hrp_allocation(cov, ordered_tickers):
         """
-        Given the clusters, compute the portfolio that minimises risk.
+        Given the clusters, compute the portfolio that minimises risk by
+        recursively traversing the hierarchical tree from the top.
 
         :param cov: covariance matrix
         :type cov: np.ndarray
@@ -147,61 +144,28 @@ class HRPOpt(base_optimizer.BaseOptimizer):
         Construct a hierarchical risk parity portfolio
 
         :return: weights for the HRP portfolio
-        :rtype: dict
+        :rtype: OrderedDict
         """
-        corr, cov = self.returns.corr(), self.returns.cov()
+        if self.returns is None:
+            cov = self.cov_matrix
+            corr = risk_models.cov_to_corr(self.cov_matrix).round(6)
+        else:
+            corr, cov = self.returns.corr(), self.returns.cov()
 
         # Compute distance matrix, with ClusterWarning fix as
         # per https://stackoverflow.com/questions/18952587/
-        dist = ssd.squareform(((1 - corr) / 2) ** 0.5)
+
+        # this can avoid some nasty floating point issues
+        matrix = np.sqrt(np.clip((1.0 - corr) / 2.0, a_min=0.0, a_max=1.0))
+        dist = ssd.squareform(matrix, checks=False)
 
         self.clusters = sch.linkage(dist, "single")
         sort_ix = HRPOpt._get_quasi_diag(self.clusters)
         ordered_tickers = corr.index[sort_ix].tolist()
         hrp = HRPOpt._raw_hrp_allocation(cov, ordered_tickers)
-        weights = dict(hrp.sort_index())
+        weights = collections.OrderedDict(hrp.sort_index())
         self.set_weights(weights)
         return weights
-
-    def plot_dendrogram(self, show_tickers=True, filename=None, showfig=True):
-        """
-        Plot the clusters in the form of a dendrogram.
-
-        :param show_tickers: whether to use tickers as labels (not recommended for large portfolios),
-                            defaults to True
-        :type show_tickers: bool, optional
-        :param filename: name of the file to save to, defaults to None (doesn't save)
-        :type filename: str, optional
-        :param showfig: whether to plt.show() the figure, defaults to True
-        :type showfig: bool, optional
-        :raises ImportError: if matplotlib is not installed
-        :return: matplotlib axis
-        :rtype: matplotlib.axes object
-        """
-
-        try:
-            import matplotlib.pyplot as plt
-        except (ModuleNotFoundError, ImportError):
-            raise ImportError("Please install matplotlib via pip or poetry")
-
-        if self.clusters is None:
-            self.optimize()
-
-        fig, ax = plt.subplots()
-        if show_tickers:
-            sch.dendrogram(self.clusters, labels=self.tickers, ax=ax)
-            plt.xticks(rotation=90)
-            plt.tight_layout()
-        else:
-            sch.dendrogram(self.clusters, ax=ax)
-
-        if filename:
-            plt.savefig(fname=filename, dpi=300)
-
-        if showfig:
-            plt.show()
-
-        return ax
 
     def portfolio_performance(self, verbose=False, risk_free_rate=0.02, frequency=252):
         """
@@ -222,10 +186,13 @@ class HRPOpt(base_optimizer.BaseOptimizer):
         :return: expected return, volatility, Sharpe ratio.
         :rtype: (float, float, float)
         """
+        if self.returns is None:
+            cov = self.cov_matrix
+            mu = None
+        else:
+            cov = self.returns.cov() * frequency
+            mu = self.returns.mean() * frequency
+
         return base_optimizer.portfolio_performance(
-            self.weights,
-            self.returns.mean() * frequency,
-            self.returns.cov() * frequency,
-            verbose,
-            risk_free_rate,
+            self.weights, mu, cov, verbose, risk_free_rate
         )

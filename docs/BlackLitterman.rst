@@ -27,7 +27,7 @@ be estimated. The Black-Litterman formula is given below:
 - :math:`P` is the KxN **picking matrix** which maps views to the universe of assets.
   Essentially, it tells the model which view corresponds to which asset(s).
 - :math:`\Omega` is the KxK **uncertainty matrix** of views. 
-- :math:`Pi` is the Nx1 vector of prior expected returns. 
+- :math:`\Pi` is the Nx1 vector of prior expected returns. 
 - :math:`\Sigma` is the NxN covariance matrix of asset returns (as always)
 - :math:`\tau` is a scalar tuning constant. 
 
@@ -49,7 +49,14 @@ but I ultimately decided that though BL is not technically an optimiser, it didn
 split up its methods into `expected_returns` or `risk_models`. I have thus made it an independent
 module and owing to the comparatively extensive theory, have given it a dedicated documentation page.
 I'd like to thank  `Felipe Schneider <https://github.com/schneiderfelipe>`_ for his multiple
-contributions to the Black-Litterman implementation.
+contributions to the Black-Litterman implementation. A full example of its usage, including the acquistion
+of market cap data for free, please refer to the `cookbook recipe <https://github.com/robertmartin8/PyPortfolioOpt/blob/master/cookbook/4-Black-Litterman-Allocation.ipynb>`_.
+
+.. caution:: 
+
+    Our implementation of Black-Litterman makes frequent use of the fact that python 3.6+ dictionaries
+    remain ordered. It is still possible to use python 3.5 but you will have to construct the BL inputs
+    explicitly (``Q``, ``P``, ``omega``).
 
 Priors
 ======
@@ -141,7 +148,7 @@ A brief explanation of the above:
 
 - Each view has a corresponding row in the picking matrix (the order matters)
 - Absolute views have a single 1 in the column corresponding to the ticker's order in the universe. 
-- Relative views have a positive number in the nominally outperforming asset columns and negative number
+- Relative views have a positive number in the nominally outperforming asset columns and a negative number
   in the nominally underperforming asset columns. The numbers in each row should sum up to 0.
 
 
@@ -165,7 +172,11 @@ around a lot are harder to forecast! Hence PyPortfolioOpt does not require you t
 
     \Omega = \tau * P \Sigma P^T
 
-However, you are of course welcome to provide your own estimate. This is particularly applicable if your views are the output
+Alternatively, we provide an implementation of Idzorek's method [1]_. This allows you to specify your view uncertainties as
+percentage confidences. To use this, choose ``omega="idzorek"`` and pass a list of confidences (from 0 to 1) into the ``view_confidences``
+parameter.
+
+You are of course welcome to provide your own estimate. This is particularly applicable if your views are the output
 of some statistical model, which may also provide the view uncertainty.
 
 Another parameter that controls the relative weighting of the priors views is :math:`\tau`. There is a lot to be said about tuning
@@ -174,7 +185,7 @@ the sensible default :math:`\tau = 0.05`.
 
 .. note::
 
-    If you use this default estimate of :math:`\Omega`, it turns out that the value of :math:`\tau` does not matter. This
+    If you use the default estimate of :math:`\Omega`, or ``omega="idzorek"``, it turns out that the value of :math:`\tau` does not matter. This
     is a consequence of the mathematics: the :math:`\tau` cancels in the matrix multiplications.
 
 
@@ -231,4 +242,4 @@ References
 .. [1] Idzorek T. A step-by-step guide to the Black-Litterman model: Incorporating user-specified confidence levels. In: Forecasting Expected Returns in the Financial Markets. Elsevier Ltd; 2007. p. 17–38. 
 .. [2] Black, F; Litterman, R. Combining investor views with market equilibrium. The Journal of Fixed Income, 1991.
 .. [3] Walters, Jay, The Factor Tau in the Black-Litterman Model (October 9, 2013). Available at SSRN: https://ssrn.com/abstract=1701467 or http://dx.doi.org/10.2139/ssrn.1701467
-.. [4] Walters J. The Black-Litterman Model in Detail. SSRN Electron J. 2011;(February 2007):1–65. 
+.. [4] Walters J. The Black-Litterman Model in Detail (2014). SSRN Electron J.;(February 2007):1–65. 

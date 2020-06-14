@@ -14,13 +14,14 @@ For this guide, we will be focusing on mean-variance optimisation (MVO), which i
 most people think of when they hear "portfolio optimisation". MVO forms the core of
 PyPortfolioOpt's offering, though it should be noted that MVO comes in many flavours,
 which can have very different performance characteristics. Please refer to the sidebar
-to get a feeling for the possiblities, as well as the other optimisation methods
+to get a feeling for the possibilities, as well as the other optimisation methods
 offered. But for now, we will continue with the Efficient Frontier.
 
 PyPortfolioOpt is designed with modularity in mind; the below flowchart sums up the
 current functionality and overall layout of PyPortfolioOpt.
 
 .. image:: ../media/conceptual_flowchart_v2-grey.png
+    :alt: Conceptual flowchart for the PyPortfolioOpt library
 
 Processing historical prices
 ============================
@@ -116,6 +117,7 @@ portfolio) – the set of all these optimal portfolios is referred to as the
 
 .. image:: ../media/efficient_frontier.png
    :align: center
+   :alt: risk-return characteristics of possible portfolios 
 
 Each dot on this diagram represents a different possible portfolio, with darker blue
 corresponding to 'better' portfolios (in terms of the Sharpe Ratio). The dotted
@@ -259,7 +261,7 @@ further in :ref:`post-processing`, but we provide an example below::
     allocation, leftover = da.lp_portfolio()
     print(allocation)
 
-These are the quantitites of shares that should be bought to have a $20,000 portfolio::
+These are the quantities of shares that should be bought to have a $20,000 portfolio::
 
     {'AAPL': 2.0,
     'FB': 12.0,
@@ -287,7 +289,7 @@ should you try?
 - Use the Black-Litterman model to construct a more stable model of expected returns.
   Alternatively, just drop the expected returns altogether!. There is a large body of research
   that suggests that minimum variance portfolios (``ef.min_volatility()``) consistently outperform
-  maximum Sharpe ratio portfolios out-of-sample, because of the dififuclty of forecasting expected returns.
+  maximum Sharpe ratio portfolios out-of-sample, because of the difficulty of forecasting expected returns.
 - Try different risk models: different asset classes may require different risk models.
 - Add some new objective terms or constraints. Tune the L2 regularisation parameter to see how diversification
   affects the performance.
@@ -296,6 +298,8 @@ This concludes the guided tour. Head over to the appropriate sections
 in the sidebar to learn more about the parameters and theoretical details of the
 different models offered by PyPortfolioOpt. If you have any questions, please
 raise an issue on GitHub and I will try to respond promptly.
+
+If you'd like even more examples, check out the cookbook `recipe <https://github.com/robertmartin8/PyPortfolioOpt/blob/master/cookbook/2-Mean-Variance-Optimisation.ipynb>`_.
 
 
 References
